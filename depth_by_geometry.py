@@ -29,46 +29,26 @@ def solve_depth_geom(
     area = np.where(np.isinf(area), 0, area) # set infinite areas to 0
 
     db = (cs * (tw - bw)) / 2 # bankfull depth
-
     area_bankfull = (tw + bw) / 2 * db  # cross-sectional area at bankfull conditions
     # assume trapezoidal main channel
 
-    depths = np.zeros_like(area) # initialize depths array with NaN values
+    depths = np.zeros_like(area) # initialize depths array with 0 values
 
     above_bankfull = area >= area_bankfull
-    for i, above in enumerate(above_bankfull):
-        if above:
+    area_flood = area[above_bankfull] - area_bankfull[above_bankfull]
+    df = area_flood / (tw[above_bankfull] * 3)
+    depths[above_bankfull] = db[above_bankfull] + df
 
-            area_flood = area[i] - area_bankfull[i] # cross-sectional area of flow in floodplain only
+    # Below bankfull - solve quadratic formula directly (vectorized)
+    below_bankfull = ~above_bankfull & (area > 0)
 
-            df = area_flood / (tw[i] * 3) # depth of flood (assume rectangular floodplain)
-            # Also assume compound channel width is 3x main channel top width
+    # Quadratic: h^2 + cs*bw*h - cs*area = 0
+    # Using formula: h = (-b + sqrt(b^2 + 4*c)) / 2, where a=1
+    b_coeff = cs[below_bankfull] * bw[below_bankfull]
+    c_coeff = -cs[below_bankfull] * area[below_bankfull]
 
-            h = db[i] + df # total depth
-            depths[i] = h
-
-        else:
-            # executes if flow is less than bankfull
-            # quadratic equation coefficients
-            # h^2 + cs * bw * h - cs * area = 0
-
-            if area[i] <= 0:
-                depths[i] = 0.0
-                continue
-
-            a = 1
-            b = cs[i] * bw[i]
-            c = (-1) * cs[i] * area[i]
-            coeffs = [a, b, c]
-
-            all_roots = np.roots(coeffs)
-            real_roots = all_roots[np.isclose(all_roots.imag, 0)].real
-
-            try:
-                h = real_roots[real_roots > 0][0]
-            except IndexError:
-                h = np.nan # No positive roots found
-
-            depths[i] = h
+    discriminant = b_coeff**2 - 4*c_coeff
+    h_positive = (-b_coeff + np.sqrt(discriminant)) / 2
+    depths[below_bankfull] = h_positive
 
     return depths
