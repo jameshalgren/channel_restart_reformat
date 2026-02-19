@@ -8,7 +8,7 @@ Authored by: Quinn Lee
 import numpy as np
 
 def solve_depth(
-        streamflow: float, velocity: float, tw: float, bw: float, cs: float, twcc: float
+        streamflow: float, velocity: float, tw: float, bw: float, cs: float
         ) -> float:
     """
     Solves for depth h using CHRTOUT file variables and channel geometry variables.
@@ -19,7 +19,6 @@ def solve_depth(
     - tw: Top width of the main channel. (m)
     - bw: Bottom width of the main channel. (m)
     - cs: Channel slope (dimensionless).
-    - twcc: Top width of the floodplain (compound channel). (m)
 
     Returns:
     - h: Initial depth that achieves the target flow rate, or NaN if no solution is found.
@@ -36,7 +35,8 @@ def solve_depth(
 
         area_flood = area - area_bankfull # cross-sectional area of flow in floodplain only
 
-        df = area_flood / twcc # depth of flood (assume rectangular floodplain)
+        df = area_flood / (tw * 3) # depth of flood (assume rectangular floodplain)
+        # Also assume compound channel width is 3x main channel top width
 
         h = db + df # total depth
 
@@ -53,6 +53,10 @@ def solve_depth(
     all_roots = np.roots(coeffs)
 
     real_roots = all_roots[np.isclose(all_roots.imag, 0)].real
-    positive_root = real_roots[real_roots > 0][0]
+
+    try:
+        positive_root = real_roots[real_roots > 0][0]
+    except IndexError:
+        positive_root = np.nan
 
     return positive_root
