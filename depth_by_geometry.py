@@ -7,9 +7,9 @@ Authored by: Quinn Lee
 
 import numpy as np
 
-def solve_depth(
-        streamflow: float, velocity: float, tw: float, bw: float, cs: float
-        ) -> float:
+def solve_depth_geom(
+        streamflow: np.ndarray, velocity: np.ndarray, tw: np.ndarray, bw: np.ndarray, cs: np.ndarray
+        ) -> np.ndarray:
     """
     Solves for depth h using CHRTOUT file variables and channel geometry variables.
 
@@ -25,38 +25,50 @@ def solve_depth(
     """
 
     area = streamflow / velocity # cross-sectional area of initial flow
+    area = np.where(np.isnan(area), 0, area) # set NaN areas to 0
+    area = np.where(np.isinf(area), 0, area) # set infinite areas to 0
 
     db = (cs * (tw - bw)) / 2 # bankfull depth
 
     area_bankfull = (tw + bw) / 2 * db  # cross-sectional area at bankfull conditions
     # assume trapezoidal main channel
 
-    if area >= area_bankfull:
+    depths = np.zeros_like(area) # initialize depths array with NaN values
 
-        area_flood = area - area_bankfull # cross-sectional area of flow in floodplain only
+    above_bankfull = area >= area_bankfull
+    for i, above in enumerate(above_bankfull):
+        if above:
 
-        df = area_flood / (tw * 3) # depth of flood (assume rectangular floodplain)
-        # Also assume compound channel width is 3x main channel top width
+            area_flood = area[i] - area_bankfull[i] # cross-sectional area of flow in floodplain only
 
-        h = db + df # total depth
+            df = area_flood / (tw[i] * 3) # depth of flood (assume rectangular floodplain)
+            # Also assume compound channel width is 3x main channel top width
 
-        return h
+            h = db[i] + df # total depth
+            depths[i] = h
 
-    # executes if flow is less than bankfull
-    # quadratic equation coefficients
-    # h^2 + cs * bw * h - cs * area = 0
-    a = 1
-    b = cs * bw
-    c = (-1) * cs * area
-    coeffs = [a, b, c]
+        else:
+            # executes if flow is less than bankfull
+            # quadratic equation coefficients
+            # h^2 + cs * bw * h - cs * area = 0
 
-    all_roots = np.roots(coeffs)
+            if area[i] <= 0:
+                depths[i] = 0.0
+                continue
 
-    real_roots = all_roots[np.isclose(all_roots.imag, 0)].real
+            a = 1
+            b = cs[i] * bw[i]
+            c = (-1) * cs[i] * area[i]
+            coeffs = [a, b, c]
 
-    try:
-        positive_root = real_roots[real_roots > 0][0]
-    except IndexError:
-        positive_root = np.nan
+            all_roots = np.roots(coeffs)
+            real_roots = all_roots[np.isclose(all_roots.imag, 0)].real
 
-    return positive_root
+            try:
+                h = real_roots[real_roots > 0][0]
+            except IndexError:
+                h = np.nan # No positive roots found
+
+            depths[i] = h
+
+    return depths
